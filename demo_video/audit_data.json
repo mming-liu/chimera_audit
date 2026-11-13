@@ -1,0 +1,347 @@
+{
+  "presets": [
+    {
+      "id": "0day_1_filewriter",
+      "label": "[0-Day #1] Multi-Hop FileWriter Escape",
+      "category": "pathtraver",
+      "code": "\npublic class FileUploadController {\n    private FileUploadService uploadService;\n    \n    @PostMapping(\"/upload\")\n    public ResponseEntity<?> uploadFile(@RequestParam(\"path\") String userPath, @RequestParam(\"file\") MultipartFile file) {\n        String result = uploadService.processUpload(userPath, file);\n        return ResponseEntity.ok(result);\n    }\n}\n\npublic class FileUploadService {\n    public String processUpload(String userPath, MultipartFile file) {\n        String tempPath = prepareDirectoryPath(userPath);\n        writeToFile(tempPath, file);\n        return \"uploaded\";\n    }\n    \n    private String prepareDirectoryPath(String input) {\n        // No normalization!\n        return \"/uploads/\" + input;\n    }\n    \n    private void writeToFile(String filePath, MultipartFile file) throws IOException {\n        FileWriter writer = new FileWriter(filePath);\n        writer.write(new String(file.getBytes()));\n        writer.close();\n    }\n}\n",
+      "language": "java",
+      "filename": "FileUploadController.java",
+      "expected_verdict": true,
+      "description": "Multi-hop path traversal: @RequestParam → uploadService → FileWriter with no normalization"
+    },
+    {
+      "id": "0day_2_workflow_sqli",
+      "label": "[0-Day #2] Workflow JSON SQLi",
+      "category": "sqli",
+      "code": "\n@RestController\n@RequestMapping(\"/api/workflow\")\npublic class WorkflowController {\n    @Autowired\n    private WorkflowService workflowService;\n    \n    @PostMapping(\"/search\")\n    public ResponseEntity<?> searchMapStr(@RequestBody Map<String, String> searchParams) {\n        String query = workflowService.buildQuery(searchParams);\n        return ResponseEntity.ok(query);\n    }\n}\n\n@Service\npublic class WorkflowService {\n    @Autowired\n    private JdbcTemplate jdbcTemplate;\n    \n    public String buildQuery(Map<String, String> params) {\n        String searchTerm = params.get(\"keyword\");\n        String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n        return jdbcTemplate.queryForMap(rawQuery).toString();\n    }\n}\n",
+      "language": "java",
+      "filename": "WorkflowController.java",
+      "expected_verdict": true,
+      "description": "SQL injection via string concatenation in LIKE clause"
+    },
+    {
+      "id": "0day_3_authz_bypass",
+      "label": "[0-Day #3] Bare @PostMapping Authz Bypass",
+      "category": "authz",
+      "code": "\n@RestController\n@RequestMapping(\"/api/s3\")\npublic class AliPayController {\n    \n    @PostMapping(\"/downloadS3Storage\")\n    @PreAuthorize(\"hasRole('USER')\")\n    public ResponseEntity<?> downloadS3Storage(@RequestParam String objectKey) {\n        // This is guarded\n        return ResponseEntity.ok(s3Client.getObject(objectKey));\n    }\n    \n    @PostMapping(\"/uploadS3Storage\")\n    public ResponseEntity<?> uploadS3Storage(@RequestParam String objectKey, @RequestBody byte[] data) {\n        // This is NOT guarded - siblings have auth, but this write endpoint is missing it!\n        s3Client.putObject(objectKey, data);\n        return ResponseEntity.ok(\"uploaded\");\n    }\n}\n",
+      "language": "java",
+      "filename": "AliPayController.java",
+      "expected_verdict": true,
+      "description": "Write endpoint uploadS3Storage missing @PreAuthorize while sibling downloadS3Storage has it"
+    },
+    {
+      "id": "0day_4_chunk_traversal",
+      "label": "[0-Day #4] Chunk Upload Traversal",
+      "category": "pathtraver",
+      "code": "\n@RestController\n@RequestMapping(\"/api/upload\")\npublic class ChunkUploadController {\n    \n    @PostMapping(\"/chunk\")\n    public ResponseEntity<?> uploadChunk(@RequestParam(\"chunkName\") String chunkName, @RequestBody byte[] data) {\n        String uploadDir = \"/tmp/chunks\";\n        String finalPath = uploadDir + File.separator + chunkName;\n        Files.write(Paths.get(finalPath), data);\n        return ResponseEntity.ok(\"chunk saved\");\n    }\n}\n",
+      "language": "java",
+      "filename": "ChunkUploadController.java",
+      "expected_verdict": true,
+      "description": "Path traversal via chunkName parameter: user can use ../ to escape /tmp/chunks"
+    },
+    {
+      "id": "fp_trap_1_pathvar_guard",
+      "label": "[FP Trap #1] Tomcat @PathVariable Guard",
+      "category": "pathtraver",
+      "code": "\n@RestController\n@RequestMapping(\"/api/files\")\npublic class FileController {\n    \n    @GetMapping(\"/download/{fileName}\")\n    public ResponseEntity<?> downloadFile(@PathVariable String fileName) {\n        // Single-segment @PathVariable without URLDecoder or {*wildcard}\n        // Tomcat 10.1 + Spring MVC 6.1 normalizes single-segment @PathVariable\n        // Blocks %2F (/) and %2E%2E (..) automatically\n        String filePath = \"/safe/files/\" + fileName;\n        return ResponseEntity.ok(Files.readAllBytes(Paths.get(filePath)));\n    }\n}\n",
+      "language": "java",
+      "filename": "FileController.java",
+      "expected_verdict": false,
+      "description": "SAFE: Single-segment @PathVariable is normalized by Tomcat container guard - NOT vulnerable"
+    },
+    {
+      "id": "fp_trap_2_namedparam",
+      "label": "[FP Trap #2] NamedParam SQL Builder",
+      "category": "sqli",
+      "code": "\n@RestController\n@RequestMapping(\"/api/search\")\npublic class SearchController {\n    @Autowired\n    private NamedParameterJdbcTemplate namedTemplate;\n    \n    @GetMapping(\"/users\")\n    public ResponseEntity<?> searchUsers(@RequestParam String sourceParam) {\n        String query = \"SELECT * FROM users WHERE source = :source\";\n        SqlParameterSource namedParams = new MapSqlParameterSource(\"source\", sourceParam);\n        List<User> results = namedTemplate.query(query, namedParams, (rs, rowNum) -> {\n            return new User(rs.getLong(\"id\"), rs.getString(\"name\"));\n        });\n        return ResponseEntity.ok(results);\n    }\n}\n",
+      "language": "java",
+      "filename": "SearchController.java",
+      "expected_verdict": false,
+      "description": "SAFE: Named parameter :source with addValue() - NOT vulnerable to SQL injection"
+    }
+  ],
+  "sqli": {
+    "preset": {
+      "id": "0day_2_workflow_sqli",
+      "label": "[0-Day #2] Workflow JSON SQLi",
+      "category": "sqli",
+      "code": "\n@RestController\n@RequestMapping(\"/api/workflow\")\npublic class WorkflowController {\n    @Autowired\n    private WorkflowService workflowService;\n    \n    @PostMapping(\"/search\")\n    public ResponseEntity<?> searchMapStr(@RequestBody Map<String, String> searchParams) {\n        String query = workflowService.buildQuery(searchParams);\n        return ResponseEntity.ok(query);\n    }\n}\n\n@Service\npublic class WorkflowService {\n    @Autowired\n    private JdbcTemplate jdbcTemplate;\n    \n    public String buildQuery(Map<String, String> params) {\n        String searchTerm = params.get(\"keyword\");\n        String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n        return jdbcTemplate.queryForMap(rawQuery).toString();\n    }\n}\n",
+      "language": "java",
+      "filename": "WorkflowController.java",
+      "expected_verdict": true,
+      "description": "SQL injection via string concatenation in LIKE clause"
+    },
+    "result": {
+      "entry_function": "searchMapStr",
+      "entry_route": "@RequestMapping(\"/api/workflow\")",
+      "hops": [
+        {
+          "hop": 1,
+          "function": "searchMapStr",
+          "file": "WorkflowController.java",
+          "line": 9,
+          "code": "// Call to searchMapStr"
+        },
+        {
+          "hop": 2,
+          "function": "buildQuery",
+          "file": "WorkflowController.java",
+          "line": 10,
+          "code": "// Call to buildQuery"
+        },
+        {
+          "hop": 3,
+          "function": "ok",
+          "file": "WorkflowController.java",
+          "line": 11,
+          "code": "// Call to ok"
+        }
+      ],
+      "categories": {
+        "sqli": {
+          "verdict": true,
+          "confidence": 1.0,
+          "explanation": "String concatenation detected into SQL query",
+          "tier": 0,
+          "cwe": "CWE-89"
+        },
+        "pathtraver": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No path traversal patterns detected",
+          "tier": 0,
+          "cwe": "CWE-22"
+        },
+        "authz": {
+          "verdict": true,
+          "confidence": 0.6,
+          "explanation": "Tier 2 deep analysis: Still uncertain (conservative default)",
+          "tier": 2,
+          "cwe": "CWE-862"
+        },
+        "deserial": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No deserialization patterns detected",
+          "tier": 0,
+          "cwe": "CWE-502"
+        },
+        "cmdi": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No command injection patterns detected",
+          "tier": 0,
+          "cwe": "CWE-78"
+        },
+        "ssrf": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No SSRF patterns detected",
+          "tier": 0,
+          "cwe": "CWE-918"
+        }
+      },
+      "token_savings_pct": 84.2,
+      "patch": {
+        "unified_diff": "  \n  @RestController\n  @RequestMapping(\"/api/workflow\")\n  public class WorkflowController {\n      @Autowired\n      private WorkflowService workflowService;\n      \n      @PostMapping(\"/search\")\n      public ResponseEntity<?> searchMapStr(@RequestBody Map<String, String> searchParams) {\n          String query = workflowService.buildQuery(searchParams);\n          return ResponseEntity.ok(query);\n      }\n  }\n  \n  @Service\n  public class WorkflowService {\n      @Autowired\n      private JdbcTemplate jdbcTemplate;\n      \n      public String buildQuery(Map<String, String> params) {\n          String searchTerm = params.get(\"keyword\");\n          String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n          return jdbcTemplate.queryForMap(rawQuery).toString();\n      }\n  }\n  ",
+        "patch_verified": false,
+        "explanation": "Patch did not verify: sqli still True"
+      }
+    }
+  },
+  "fp": {
+    "preset": {
+      "id": "fp_trap_1_pathvar_guard",
+      "label": "[FP Trap #1] Tomcat @PathVariable Guard",
+      "category": "pathtraver",
+      "code": "\n@RestController\n@RequestMapping(\"/api/files\")\npublic class FileController {\n    \n    @GetMapping(\"/download/{fileName}\")\n    public ResponseEntity<?> downloadFile(@PathVariable String fileName) {\n        // Single-segment @PathVariable without URLDecoder or {*wildcard}\n        // Tomcat 10.1 + Spring MVC 6.1 normalizes single-segment @PathVariable\n        // Blocks %2F (/) and %2E%2E (..) automatically\n        String filePath = \"/safe/files/\" + fileName;\n        return ResponseEntity.ok(Files.readAllBytes(Paths.get(filePath)));\n    }\n}\n",
+      "language": "java",
+      "filename": "FileController.java",
+      "expected_verdict": false,
+      "description": "SAFE: Single-segment @PathVariable is normalized by Tomcat container guard - NOT vulnerable"
+    },
+    "result": {
+      "entry_function": "downloadFile",
+      "entry_route": "@RequestMapping(\"/api/files\")",
+      "hops": [
+        {
+          "hop": 1,
+          "function": "downloadFile",
+          "file": "FileController.java",
+          "line": 7,
+          "code": "// Call to downloadFile"
+        },
+        {
+          "hop": 2,
+          "function": "ok",
+          "file": "FileController.java",
+          "line": 8,
+          "code": "// Call to ok"
+        },
+        {
+          "hop": 3,
+          "function": "readAllBytes",
+          "file": "FileController.java",
+          "line": 9,
+          "code": "// Call to readAllBytes"
+        },
+        {
+          "hop": 4,
+          "function": "get",
+          "file": "FileController.java",
+          "line": 10,
+          "code": "// Call to get"
+        }
+      ],
+      "categories": {
+        "sqli": {
+          "verdict": true,
+          "confidence": 1.0,
+          "explanation": "String concatenation detected into SQL query",
+          "tier": 0,
+          "cwe": "CWE-89"
+        },
+        "pathtraver": {
+          "verdict": true,
+          "confidence": 0.6,
+          "explanation": "Tier 2 deep analysis: Vulnerable (1 vs 0 reasons)",
+          "tier": 2,
+          "cwe": "CWE-22"
+        },
+        "authz": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "Not a write endpoint",
+          "tier": 0,
+          "cwe": "CWE-862"
+        },
+        "deserial": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No deserialization patterns detected",
+          "tier": 0,
+          "cwe": "CWE-502"
+        },
+        "cmdi": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No command injection patterns detected",
+          "tier": 0,
+          "cwe": "CWE-78"
+        },
+        "ssrf": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No SSRF patterns detected",
+          "tier": 0,
+          "cwe": "CWE-918"
+        }
+      },
+      "token_savings_pct": 84.2,
+      "patch": {
+        "unified_diff": "  \n  @RestController\n  @RequestMapping(\"/api/files\")\n  public class FileController {\n      \n      @GetMapping(\"/download/{fileName}\")\n      public ResponseEntity<?> downloadFile(@PathVariable String fileName) {\n          // Single-segment @PathVariable without URLDecoder or {*wildcard}\n          // Tomcat 10.1 + Spring MVC 6.1 normalizes single-segment @PathVariable\n          // Blocks %2F (/) and %2E%2E (..) automatically\n          String filePath = \"/safe/files/\" + fileName;\n          return ResponseEntity.ok(Files.readAllBytes(Paths.get(filePath)));\n      }\n  }\n  ",
+        "patch_verified": false,
+        "explanation": "Patch did not verify: sqli still True"
+      }
+    }
+  },
+  "cve5": {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "x_CAN-2026-984430",
+      "assignerOrgId": "chimera-audit-cna",
+      "state": "PUBLISHED",
+      "datePublished": "2026-11-13T22:34:17.423933Z"
+    },
+    "containers": {
+      "cna": {
+        "descriptions": [
+          {
+            "lang": "en",
+            "value": "SQL Injection vulnerability in searchMapStr (sqli). The vulnerable code is located in WorkflowController.java. Multi-hop taint slice depth: 3 hops."
+          }
+        ],
+        "affected": [
+          {
+            "product": "chimera-audit",
+            "vendor": "your-org",
+            "versions": [
+              {
+                "version": "0.0",
+                "status": "affected",
+                "lessThan": "unpatched"
+              }
+            ],
+            "platforms": [
+              "All"
+            ],
+            "programFiles": [
+              "WorkflowController.java"
+            ]
+          }
+        ],
+        "references": [
+          {
+            "url": "https://github.com/your-org/chimera-audit",
+            "name": "Repository"
+          },
+          {
+            "url": "https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=CWE-89",
+            "name": "CWE-89 Details"
+          }
+        ],
+        "metrics": [
+          {
+            "cvssV3_1": {
+              "version": "3.1",
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+              "baseScore": 9.8,
+              "baseSeverity": "CRITICAL",
+              "attackVector": "NETWORK",
+              "attackComplexity": "LOW",
+              "privilegesRequired": "NONE",
+              "userInteraction": "NONE",
+              "scope": "UNCHANGED"
+            }
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "type": "CWE",
+                "cweId": "CWE-89",
+                "description": "SQL Injection vulnerability"
+              }
+            ]
+          }
+        ],
+        "x_CAN": {
+          "category": "sqli",
+          "unitName": "searchMapStr",
+          "filePath": "WorkflowController.java",
+          "sliceHops": 3,
+          "taintSources": [
+            "@RequestBody Map<String,String> searchParams"
+          ],
+          "taintSinks": [
+            "jdbcTemplate.queryForMap(rawQuery)"
+          ],
+          "patchVerified": false,
+          "tokenSavingsPct": 84.2,
+          "generatedBy": "ChimeraAudit v1.0"
+        }
+      }
+    }
+  },
+  "cve5_pretty": "{\n  \"dataType\": \"CVE_RECORD\",\n  \"dataVersion\": \"5.2\",\n  \"cveMetadata\": {\n    \"cveId\": \"x_CAN-2026-984430\",\n    \"assignerOrgId\": \"chimera-audit-cna\",\n    \"state\": \"PUBLISHED\",\n    \"datePublished\": \"2026-11-13T22:34:17.423933Z\"\n  },\n  \"containers\": {\n    \"cna\": {\n      \"descriptions\": [\n        {\n          \"lang\": \"en\",\n          \"value\": \"SQL Injection vulnerability in searchMapStr (sqli). The vulnerable code is located in WorkflowController.java. Multi-hop taint slice depth: 3 hops.\"\n        }\n      ],\n      \"affected\": [\n        {\n          \"product\": \"chimera-audit\",\n          \"vendor\": \"your-org\",\n          \"versions\": [\n            {\n              \"version\": \"0.0\",\n              \"status\": \"affected\",\n              \"lessThan\": \"unpatched\"\n            }\n          ],\n          \"platforms\": [\n            \"All\"\n          ],\n          \"programFiles\": [\n            \"WorkflowController.java\"\n          ]\n        }\n      ],\n      \"references\": [\n        {\n          \"url\": \"https://github.com/your-org/chimera-audit\",\n          \"name\": \"Repository\"\n        },\n        {\n          \"url\": \"https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=CWE-89\",\n          \"name\": \"CWE-89 Details\"\n        }\n      ],\n      \"metrics\": [\n        {\n          \"cvssV3_1\": {\n            \"version\": \"3.1\",\n            \"vectorString\": \"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H\",\n            \"baseScore\": 9.8,\n            \"baseSeverity\": \"CRITICAL\",\n            \"attackVector\": \"NETWORK\",\n            \"attackComplexity\": \"LOW\",\n            \"privilegesRequired\": \"NONE\",\n            \"userInteraction\": \"NONE\",\n            \"scope\": \"UNCHANGED\"\n          }\n        }\n      ],\n      \"problemTypes\": [\n        {\n          \"descriptions\": [\n            {\n              \"type\": \"CWE\",\n              \"cweId\": \"CWE-89\",\n              \"description\": \"SQL Injection vulnerability\"\n            }\n          ]\n        }\n      ],\n      \"x_CAN\": {\n        \"category\": \"sqli\",\n        \"unitName\": \"searchMapStr\",\n        \"filePath\": \"WorkflowController.java\",\n        \"sliceHops\": 3,\n        \"taintSources\": [\n          \"@RequestBody Map<String,String> searchParams\"\n        ],\n        \"taintSinks\": [\n          \"jdbcTemplate.queryForMap(rawQuery)\"\n        ],\n        \"patchVerified\": false,\n        \"tokenSavingsPct\": 84.2,\n        \"generatedBy\": \"ChimeraAudit v1.0\"\n      }\n    }\n  }\n}",
+  "cve5_valid": true,
+  "cve5_errors": [],
+  "spec_files": {
+    "requirements.md": "# ChimeraAudit — Requirements Specification (Kiro EARS Syntax)\n\n> Format: `WHEN <trigger>, THE SYSTEM SHALL <response>`\n> Status: v1.0 — Kiroween 2026 Frankenstein Track\n\n## R1 — Multi-Language Route & Multi-Hop Context Slicing\n\n**R1.1** WHEN the user submits Python source code containing Flask or FastAPI route decorators (`@app.get`, `@app.post`, `@router.get`, `@router.post`, `@api_view`), THE SYSTEM SHALL extract all route handler functions matched at token boundaries, suppressing any decorator-like strings inside triple-quoted docstrings (`\"\"\"...\"\"\"`, `'''...'''`) while preserving original line numbers.\n\n**R1.2** WHEN the user submits Java Spring Boot source code containing `@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` (including bare annotations without explicit `value` or `path` attributes), THE SYSTEM SHALL extract route handlers and compose the full URL by concatenating the class-level `@RequestMapping` prefix with the method-level mapping value.\n\n**R1.3** WHEN a route handler calls one or more helper functions (cross-function hops), THE SYSTEM SHALL stitch the multi-hop call chain (up to 5 hops: `Entrypoint → Hop 1 → Hop 2 → … → Sink`) and propagate taint from route parameters, `@RequestParam`, `@RequestBody`, `@PathVariable`, and DTO fields across all hops.\n\n**R1.4** WHEN multi-hop slicing produces a taint chain, THE SYSTEM SHALL return a structured taint graph with labeled nodes (function name, file, line) and directed edges (caller → callee) suitable for visual rendering.\n\n## R2 — Deterministic Security Gate + Two-Tier AI Skeptic Funnel\n\n**R2.1** WHEN a taint slice is produced, THE SYSTEM SHALL evaluate it against six deterministic Kleene three-valued detectors: `sqli`, `pathtraver`, `authz`, `deserial`, `cmdi`, `ssrf`, returning `True` (vulnerable), `False` (safe), or `None` (undetermined) per the invariants defined in `.kiro/steering/security-invariants.md`.\n\n**R2.2** WHEN a detector returns `True` or `False`, THE SYSTEM SHALL report the final verdict directly without invoking the LLM, logging the token savings percentage.\n\n**R2.3** WHEN a detector returns `None`, THE SYSTEM SHALL route the slice to Tier 1 (fast LLM check) and, if still uncertain, to Tier 2 (deep LLM skeptic analysis), merging the result back into the final verdict pipeline.\n\n**R2.4** WHEN no `LLM_API_KEY` environment variable is configured, THE SYSTEM SHALL operate in offline deterministic mode: `True`/`False` verdicts are returned as-is; `None` verdicts are conservatively promoted to `True` with an `offline_mode: true` flag.\n\n**R2.5** WHEN the two-tier funnel completes, THE SYSTEM SHALL return a `token_savings_pct` metric indicating what percentage of LLM tokens were avoided through deterministic pre-filtering.\n\n## R3 — 4-Source 0-Day Deduplication, CVE 5.2 Export & Auto-Patch Synthesis\n\n**R3.1** WHEN a `True` verdict is confirmed, THE SYSTEM SHALL query four sources in parallel: NVD (NIST), CIRCL CVE Search, GHSA (GitHub Advisory Database), and GitHub Issues search, applying whole-class vs. method-specific matching logic as defined in `.kiro/steering/security-invariants.md`.\n\n**R3.2** WHEN all four sources return no matching CVE, THE SYSTEM SHALL classify the finding as `ZERO_RECORD_FRESH` with `evidence_complete: true`.\n\n**R3.3** WHEN at least one source returns a matching CVE but the specific method under analysis is not patched in the existing CVE, THE SYSTEM SHALL classify as `ZERO_RECORD_FRESH` (new finding) alongside the related `DUPLICATE_CVE` context, tracking `evidence_complete` and listing `evidence_gaps`.\n\n**R3.4** WHEN a finding is classified as `ZERO_RECORD_FRESH`, THE SYSTEM SHALL generate a valid MITRE CNA-LR CVE 5.2 JSON record (`dataType: \"CVE_RECORD\"`, `dataVersion: \"5.2\"`, `x_CAN` extension) with all mandatory fields populated.\n\n**R3.5** WHEN a `True` verdict is confirmed, THE SYSTEM SHALL synthesize a unified diff patch and re-run the detector on the patched code to verify `True → False`, setting `patch_verified: true` on success.\n\n## R4 — Kiro MCP Server & Kiro Hook Integration\n\n**R4.1** WHEN Kiro (or any MCP client) connects to `mcp_server.py` via stdio, THE SYSTEM SHALL expose four MCP tools: `chimera_audit_code`, `chimera_check_dedup`, `chimera_synthesize_patch`, `chimera_export_cve5`, each with JSON Schema parameter validation.\n\n**R4.2** WHEN the MCP server cannot import the `mcp` SDK package, THE SYSTEM SHALL fall back to a zero-dependency JSON-RPC 2.0 over stdio implementation that exposes the same four tools.\n\n**R4.3** WHEN a user saves a `.py` or `.java` file in the Kiro IDE, THE SYSTEM SHALL trigger the `security-gate-on-save` Kiro Hook, which runs the deterministic audit and pytest regression suite, blocking the save with an exit code 2 and an error message if critical vulnerabilities are detected.\n\n**R4.4** WHEN `.kiro/settings/mcp.json` is present, THE SYSTEM SHALL register `mcp_server.py` as the local MCP server so Kiro can call the four security tools without any additional configuration.\n\n## R5 — \"Dr. Frankenstein's Zero-Day Lab\" Interactive Web Workbench\n\n**R5.1** WHEN a user opens the application URL in a browser, THE SYSTEM SHALL serve `web/index.html` — a dark-mode single-page web workbench styled as \"Dr. Frankenstein's Zero-Day Laboratory\" — requiring no login, registration, or API key.\n\n**R5.2** WHEN the web workbench loads, THE SYSTEM SHALL display six one-click preset buttons:\n1. `[0-Day #1] Multi-Hop FileWriter Escape`\n2. `[0-Day #2] Workflow JSON SQLi`\n3. `[0-Day #3] Bare @PostMapping Authz Bypass`\n4. `[0-Day #4] Chunk Upload Traversal`\n5. `[FP Trap #1] Tomcat @PathVariable Guard`\n6. `[FP Trap #2] NamedParam SQL Builder`\n\n**R5.3** WHEN a preset is clicked or the user submits custom code, THE SYSTEM SHALL display (within 3 seconds) the stitched call chain, taint graph, Kleene verdict, two-tier funnel telemetry, 4-source dedup radar, auto-verified patch diff, and CVE 5.2 JSON in four interactive tabs.\n\n**R5.4** WHEN displaying the taint graph, THE SYSTEM SHALL render an ASCII or SVG call-chain visualizer showing `Entrypoint → Hop 1 → Hop 2 → Sink` with taint flow annotations.\n\n**R5.5** WHEN displaying the CVE 5.2 tab, THE SYSTEM SHALL provide one-click copy and one-click download (`.json` file) of the generated CVE record.\n\n**R5.6** WHEN any REST endpoint fails, THE SYSTEM SHALL return a structured JSON error response (never a 500 HTML page) and display a human-readable error message in the UI.\n",
+    "security-invariants.md": "# Security Invariants — ChimeraAudit Steering\n\n> This steering file is ALWAYS included in every Kiro session for the chimera-audit project.\n> It encodes compiler-grade engineering invariants that govern every decision the agent makes.\n\n## 1. Kleene Three-Valued Logic (`True` / `False` / `None`)\n\nThe deterministic engine MUST return exactly one of three values for each security category:\n\n| Return | Meaning | Condition |\n|--------|---------|-----------|\n| `True` | **Vulnerable** — mechanically proven | String concat to SQL/path/cmd; missing auth beside guarded sibling; unsafe deserializer called |\n| `False` | **Safe** — mechanically proven | Parameterized query; path guard (`normalize().startsWith()`); concrete DTO deserialize; `@PreAuthorize` present |\n| `None` | **Undetermined** — defer to AI funnel | Insufficient static evidence; ambiguous control flow; framework-runtime dependency |\n\n**Rule**: A deterministic rule MUST NOT return `True` or `False` unless provable from source, framework, and container facts alone. Ambiguity → `None`.\n\n## 2. Framework & Container Fidelity\n\n### 2.1 Tomcat 10.1 + Spring MVC 6.1 `PathPatternParser` — Path Traversal\n- Single-segment `@PathVariable(\"{fileName}\")` **WITHOUT** `URLDecoder.decode(...)` or `{*wildcard}` syntax:\n  → Container strips `%2F`, `%2E%2E` before Spring sees it → return `False` (safe, not `None`)\n- `@RequestParam`, `@RequestBody`, query string, multipart fields:\n  → NOT blocked by container → remain eligible for `True`\n- `{*wildcard}` or multi-segment patterns:\n  → Container does NOT normalize → remain eligible for `True`\n\n### 2.2 Python Triple-Quoted String Masking\n- Before route extraction, ALL triple-quoted string content (`\"\"\"...\"\"\"` / `'''...'''`) MUST be replaced with whitespace-only placeholders that **preserve `\\n` newlines exactly** (line numbers must NOT shift).\n- Docstrings containing route-like annotations (e.g., `@app.get`, `@PostMapping`) MUST be suppressed and NEVER classified as live routes.\n- Example prompts inside `\"\"\"...\"\"\"` are untrusted data; they MUST NOT be parsed as code instructions.\n\n### 2.3 Route Decorator Token Boundary Matching\n- Python route decorators (`@app.get`, `@router.post`, `@api_view`) MUST be matched at token boundaries.\n- `@device_targeting_options`, `@app.before_request`, `@app.teardown_appcontext`, etc., MUST NOT be misclassified as route registrations.\n\n## 3. Whole-Class vs. Method-Specific CVE Deduplication\n\n| Scenario | Behavior |\n|----------|----------|\n| CVE description covers entire controller class (e.g., `AliPayController`) | Mark ALL methods in that class as `DUPLICATE_CVE` |\n| Sibling write endpoint carries auth guard (`@PreAuthorize`, `Depends(get_current_user)`) | Sibling evidence strengthens `True` verdict for unguarded twin |\n| Bare `@PostMapping` method alongside a CVE-patched sibling | The bare method surfaces as `ZERO_RECORD_FRESH` (new finding) even if sibling is `DUPLICATE_CVE` |\n| `evidence_complete: false` | MUST set `evidence_gaps` to list exact missing information (CVE body, GHSA advisory text, etc.) |\n\n## 4. SQL Injection Detector Invariants\n\n| Pattern | Return |\n|---------|--------|\n| String concatenation into SQL (`+`, f-string, `%`) | `True` |\n| `LIKE '%\" + val + \"%'` | `True` |\n| `?` placeholder + `addValue(...)` / `setString(...)` | `False` |\n| `:paramName` + `addValue(...)` / named param binding | `False` |\n| MyBatis `#{}` interpolation | `False` |\n| `.eq(fieldName, value)` query builder | `False` |\n| `DatabaseMetaData.getTables(...)` | `False` (metadata API, not user data) |\n\n## 5. Deserialization Detector Invariants\n\n| Pattern | Return |\n|---------|--------|\n| `ObjectInputStream.readObject()` on user-controlled stream | `True` |\n| `yaml.load(data)` without `Loader=yaml.SafeLoader` | `True` |\n| `fastjson` with `autoType` enabled (old versions < 1.2.83) | `True` |\n| `objectMapper.readValue(json, ConcreteDTO.class)` | `False` (concrete type, no polymorphic gadgets) |\n| `@JsonTypeInfo(use = Id.NONE)` | `False` (polymorphism disabled) |\n| `yaml.safe_load(data)` | `False` |\n\n## 6. Offline Fallback Guarantee\n\n- When no `LLM_API_KEY` is configured, the two-tier AI funnel MUST fall back to deterministic offline mode.\n- Offline mode returns the deterministic verdict directly (or a conservative `True` for `None` cases).\n- The system MUST NEVER return an error to the user when AI is unavailable — offline mode is always the fallback.\n\n## 7. Patch Self-Verification\n\n- Every synthesized patch MUST be verified by re-running the detector on the patched code.\n- A patch is only accepted if the detector transitions from `True` → `False`.\n- Patches that do not achieve `True → False` MUST be flagged with `patch_verified: false`.\n\n## 8. CVE 5.2 Structural Requirements\n\nRequired fields for every exported CVE 5.2 record:\n- `dataType: \"CVE_RECORD\"`\n- `dataVersion: \"5.2\"`\n- `cveMetadata.cveId` (format: `CVE-YYYY-XXXXXX` or `x_CAN-YYYY-XXXXXX`)\n- `containers.cna.descriptions[0].lang: \"en\"`\n- `containers.cna.affected[0].product`\n- `containers.cna.affected[0].versions`\n- `containers.cna.references` (at least one entry)\n- `containers.cna.metrics` (CVSS 3.1 vector string)\n"
+  },
+  "web_title": "Dr. Frankenstein's Zero-Day Laboratory"
+}
