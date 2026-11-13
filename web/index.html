@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dr. Frankenstein's Zero-Day Laboratory</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background-color: #0B0F17;
+            color: #E4E9F1;
+            font-family: 'Monaco', 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        #container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        header {
+            background: linear-gradient(90deg, #0B0F17 0%, #1a2a3f 50%, #0B0F17 100%);
+            border-bottom: 2px solid #10B981;
+            padding: 1rem;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        h1 {
+            color: #10B981;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .presets {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+        
+        .preset-btn {
+            padding: 0.6rem 1rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10B981;
+            color: #10B981;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .preset-btn:hover {
+            background: rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .preset-btn.danger {
+            border-color: #EF4444;
+            color: #EF4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        .preset-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        
+        #main {
+            display: flex;
+            flex: 1;
+            gap: 1rem;
+            padding: 1rem;
+            overflow: hidden;
+        }
+        
+        #left-pane {
+            flex: 0 0 40%;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            overflow: hidden;
+        }
+        
+        #right-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .pane {
+            border: 1px solid #10B981;
+            border-radius: 4px;
+            background: rgba(11, 15, 23, 0.8);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+        
+        .pane-header {
+            background: rgba(16, 185, 129, 0.1);
+            padding: 0.75rem;
+            border-bottom: 1px solid #10B981;
+            font-weight: bold;
+            color: #10B981;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .pane-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 100%;
+            background: #0B0F17;
+            color: #10B981;
+            border: none;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            padding: 0.5rem;
+            resize: none;
+        }
+        
+        textarea::placeholder {
+            color: #6B7280;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 1px solid #10B981;
+            padding: 0.5rem;
+            background: rgba(16, 185, 129, 0.05);
+        }
+        
+        .tab {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: 1px solid #10B981;
+            color: #10B981;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            background: rgba(16, 185, 129, 0.2);
+        }
+        
+        .tab.active {
+            background: #10B981;
+            color: #0B0F17;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .verdict {
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        
+        .verdict.true {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #EF4444;
+            color: #FF7B7B;
+        }
+        
+        .verdict.false {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10B981;
+            color: #10B981;
+        }
+        
+        .verdict.none {
+            background: rgba(100, 116, 139, 0.2);
+            border: 1px solid #64748B;
+            color: #CBD5E1;
+        }
+        
+        .category-box {
+            background: rgba(16, 185, 129, 0.05);
+            border: 1px solid #10B981;
+            border-radius: 4px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .category-title {
+            color: #10B981;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .confidence-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(100, 116, 139, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10B981, #06B6D4);
+            transition: width 0.3s;
+        }
+        
+        .json-output {
+            background: #0B0F17;
+            color: #10B981;
+            border: 1px solid #10B981;
+            border-radius: 4px;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            font-family: 'Monaco', monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .copy-btn, .download-btn {
+            background: #10B981;
+            color: #0B0F17;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 0.5rem;
+            transition: all 0.2s;
+        }
+        
+        .copy-btn:hover, .download-btn:hover {
+            background: #0EA5E9;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .loading {
+            text-align: center;
+            color: #10B981;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            border: 2px solid rgba(16, 185, 129, 0.3);
+            border-top: 2px solid #10B981;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 1rem auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #EF4444;
+            color: #FF7B7B;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <header>
+            <h1>🧪 Dr. Frankenstein's Zero-Day Laboratory</h1>
+            <div class="presets" id="presets-container"></div>
+        </header>
+        
+        <div id="main">
+            <div id="left-pane">
+                <div class="pane">
+                    <div class="pane-header">📝 Code Editor</div>
+                    <textarea id="code-input" placeholder="Paste your code here..."></textarea>
+                </div>
+            </div>
+            
+            <div id="right-pane">
+                <div class="pane">
+                    <div class="pane-header">🔬 Analysis Tabs</div>
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('diagnosis')">Diagnosis</button>
+                        <button class="tab" onclick="switchTab('dedup')">Dedup Radar</button>
+                        <button class="tab" onclick="switchTab('patch')">Patch</button>
+                        <button class="tab" onclick="switchTab('cve5')">CVE 5.2</button>
+                    </div>
+                    
+                    <div class="pane-content">
+                        <div id="diagnosis" class="tab-content active">
+                            <div id="diagnosis-content">
+                                <p style="color: #6B7280;">Submit code to analyze...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="dedup" class="tab-content">
+                            <div id="dedup-content">
+                                <p style="color: #6B7280;">Results will appear here...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="patch" class="tab-content">
+                            <div id="patch-content">
+                                <p style="color: #6B7280;">Patch details...</p>
+                            </div>
+                        </div>
+                        
+                        <div id="cve5" class="tab-content">
+                            <div id="cve5-content">
+                                <p style="color: #6B7280;">CVE 5.2 JSON will appear here...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Load presets on page load
+        async function loadPresets() {
+            try {
+                const response = await fetch('/api/presets');
+                const data = await response.json();
+                const container = document.getElementById('presets-container');
+                
+                data.presets.forEach(preset => {
+                    const btn = document.createElement('button');
+                    btn.className = `preset-btn ${preset.expected_verdict ? '' : 'danger'}`;
+                    btn.textContent = preset.label;
+                    btn.onclick = () => analyzePreset(preset);
+                    container.appendChild(btn);
+                });
+            } catch (e) {
+                console.error('Failed to load presets:', e);
+            }
+        }
+        
+        async function analyzePreset(preset) {
+            document.getElementById('code-input').value = preset.code;
+            await analyzeCode(preset.language, preset.filename);
+        }
+        
+        async function analyzeCode(language, filename) {
+            const code = document.getElementById('code-input').value;
+            if (!code.trim()) {
+                alert('Please enter some code');
+                return;
+            }
+            
+            document.getElementById('diagnosis-content').innerHTML = '<div class="loading"><div class="spinner"></div>Analyzing...</div>';
+            
+            try {
+                const response = await fetch('/api/audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: code,
+                        language: language,
+                        filename: filename
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Audit failed');
+                const result = await response.json();
+                
+                // Display diagnosis
+                displayDiagnosis(result);
+                
+                // Store for other tabs
+                window.lastAuditResult = result;
+            } catch (e) {
+                document.getElementById('diagnosis-content').innerHTML = `<div class="error">Error: ${e.message}</div>`;
+            }
+        }
+        
+        function displayDiagnosis(result) {
+            let html = '';
+            
+            // Token savings
+            html += `<div class="category-box">
+                <div class="category-title">💚 Token Savings: ${result.token_savings_pct.toFixed(1)}%</div>
+            </div>`;
+            
+            // Categories
+            for (const [category, verdict] of Object.entries(result.categories)) {
+                const verdictClass = verdict.verdict === true ? 'true' : (verdict.verdict === false ? 'false' : 'none');
+                html += `
+                    <div class="category-box">
+                        <div class="category-title">${category.toUpperCase()} (${verdict.cwe})</div>
+                        <div class="verdict ${verdictClass}">${verdict.verdict === true ? '⚠️ VULNERABLE' : (verdict.verdict === false ? '✓ SAFE' : '❓ UNKNOWN')}</div>
+                        <div style="color: #B0B8C0; font-size: 0.9rem;">
+                            Confidence: ${(verdict.confidence * 100).toFixed(0)}%
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: ${verdict.confidence * 100}%"></div>
+                            </div>
+                            Tier ${verdict.tier} | ${verdict.explanation}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('diagnosis-content').innerHTML = html;
+        }
+        
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load content if needed
+            if (tabName === 'cve5' && window.lastAuditResult) {
+                displayCVE5();
+            } else if (tabName === 'patch' && window.lastAuditResult) {
+                displayPatch();
+            }
+        }
+        
+        function displayCVE5() {
+            if (!window.lastAuditResult) return;
+            
+            let html = '<div class="json-output">';
+            html += JSON.stringify(window.lastAuditResult, null, 2);
+            html += '</div>';
+            html += '<button class="copy-btn" onclick="copyToClipboard()">📋 Copy JSON</button>';
+            html += '<button class="download-btn" onclick="downloadJSON()">⬇️ Download</button>';
+            
+            document.getElementById('cve5-content').innerHTML = html;
+        }
+        
+        function displayPatch() {
+            if (!window.lastAuditResult) return;
+            
+            const patch = window.lastAuditResult.patch;
+            let html = '<pre style="color: #10B981; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">';
+            html += patch.unified_diff || 'No patch generated';
+            html += '</pre>';
+            
+            if (patch.patch_verified) {
+                html = '<div style="color: #10B981; margin-bottom: 0.5rem;">✅ Patch Verified: True → False</div>' + html;
+            }
+            
+            document.getElementById('patch-content').innerHTML = html;
+        }
+        
+        function copyToClipboard() {
+            if (!window.lastAuditResult) return;
+            const json = JSON.stringify(window.lastAuditResult, null, 2);
+            navigator.clipboard.writeText(json).then(() => {
+                alert('Copied to clipboard!');
+            });
+        }
+        
+        function downloadJSON() {
+            if (!window.lastAuditResult) return;
+            const json = JSON.stringify(window.lastAuditResult, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'audit-result.json';
+            a.click();
+        }
+        
+        // On Enter key in textarea
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPresets();
+            
+            const textarea = document.getElementById('code-input');
+            textarea.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    analyzeCode('java', 'code.java');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

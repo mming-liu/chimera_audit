@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "chimera-audit": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "."
+      },
+      "disabled": false
+    }
+  }
+}

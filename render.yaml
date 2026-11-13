@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: chimera-audit
+    runtime: docker
+    region: oregon
+    plan: free
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: LLM_API_KEY
+        scope: run
+        value: ""

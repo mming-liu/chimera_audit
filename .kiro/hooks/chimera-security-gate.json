@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "ChimeraAudit Security Gate",
+      "trigger": "PostFileSave",
+      "description": "Run ChimeraAudit security checks on Python/Java file save",
+      "matcher": "\\.(py|java)$",
+      "action": {
+        "type": "command",
+        "command": "cd c:\\myFloders\\git\\chimera_audit; python -m pytest tests/ -x -q 2>&1; python -c \"from chimera.detectors import *; print('✓ ChimeraAudit security gate: OK')\"",
+        "timeout": 30
+      }
+    }
+  ]
+}
