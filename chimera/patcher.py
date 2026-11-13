@@ -31,32 +31,59 @@ def generate_patch(code: str, category: str, detector_func) -> str:
     
     if category == "sqli":
         # Pattern: String concat → parameterized query
+        # Track multi-line string building patterns
+        in_query_build = False
+        query_start_idx = -1
+        
         for i, line in enumerate(lines):
-            if "+=" in line and "query" in line:
-                # Replace with parameterized version
+            # Check if line starts a query string build (= or +=)
+            if "query" in line.lower() and ("=" in line or "+=" in line):
+                in_query_build = True
+                query_start_idx = i
                 patch_lines.append(f"- {line}")
-                patched = line.replace('+=', '=').replace('+', '?')
-                patch_lines.append(f"+ {patched}")
+            elif in_query_build:
+                # Check if this line continues the query build
+                if "+=" in line or ("+" in line and ";" not in line):
+                    # This is a continuation of the string concatenation
+                    patch_lines.append(f"- {line}")
+                else:
+                    # End of query building block
+                    # Add patch suggestion
+                    patch_lines.append(f"+ // PATCHED: Use parameterized query")
+                    patch_lines.append(f"+ String query = \"SELECT * FROM ? WHERE ?=\";")
+                    patch_lines.append(f"+ ps.setString(1, table); ps.setString(2, value);")
+                    in_query_build = False
+                    patch_lines.append(f"  {line}")
             else:
                 patch_lines.append(f"  {line}")
     
     elif category == "pathtraver":
-        # Pattern: Unsafe file op → add guard
+        # Pattern: Unsafe file op → add guard or use @PathVariable correctly
         for i, line in enumerate(lines):
-            if "FileWriter(" in line or "Files.write(" in line or "open(" in line:
+            if "FileWriter(" in line or "Files.write(" in line or "Files.readAllBytes(" in line or "open(" in line:
                 patch_lines.append(f"- {line}")
                 # Add guard
-                patched = line.replace(
-                    "FileWriter(userPath)",
-                    "FileWriter(safeUserPath)"  # Guard required
-                ).replace(
-                    "open(userPath)",
-                    "open(safeUserPath)"
-                )
+                if "@PathVariable" in code and "decode" not in code.lower():
+                    # Use proper decoding
+                    patched = line.replace(
+                        "Paths.get(",
+                        "Paths.get(java.net.URLDecoder.decode("
+                    ).replace(")", ", \"UTF-8\"))")
+                else:
+                    patched = line.replace(
+                        "FileWriter(userPath)",
+                        "FileWriter(safeUserPath)"
+                    ).replace(
+                        "open(userPath)",
+                        "open(safeUserPath)"
+                    ).replace(
+                        "Paths.get(userPath)",
+                        "Paths.get(safeUserPath)"
+                    )
                 patch_lines.append(f"+ {patched}")
                 # Add guard logic
-                patch_lines.append(f"+ # Guard: verify path is within allowed directory")
-                patch_lines.append(f"+ safeUserPath = Path(userPath).relative_to('/safe/dir')")
+                patch_lines.append(f"+ // PATCHED: Validate path is within allowed directory")
+                patch_lines.append(f"+ String safeUserPath = validatePath(userPath);")
             else:
                 patch_lines.append(f"  {line}")
     
@@ -65,7 +92,7 @@ def generate_patch(code: str, category: str, detector_func) -> str:
         for i, line in enumerate(lines):
             if "@PostMapping" in line or "@PutMapping" in line or "@DeleteMapping" in line:
                 # Insert @PreAuthorize before the mapping
-                patch_lines.append(f"+ @PreAuthorize('isAuthenticated()')")
+                patch_lines.append(f"+ @PreAuthorize('hasRole(\"USER\")')")
                 patch_lines.append(f"  {line}")
             else:
                 patch_lines.append(f"  {line}")
@@ -101,7 +128,7 @@ def generate_patch(code: str, category: str, detector_func) -> str:
         for i, line in enumerate(lines):
             if "requests.get(" in line:
                 patch_lines.append(f"- {line}")
-                patch_lines.append(f"+ # Guard: validate URL against whitelist")
+                patch_lines.append(f"+ # PATCHED: Validate URL against whitelist")
                 patch_lines.append(f"+ if url not in ALLOWED_URLS:")
                 patch_lines.append(f"+     raise ValueError('URL not in whitelist')")
                 patch_lines.append(f"+ {line}")
@@ -172,17 +199,32 @@ def verify_patch(
         return False, "Original code was not vulnerable"
     
     # Re-run detector on patched code
-    if category == "sqli":
-        result = detect_sqli(None, patched_code)
-    elif category == "pathtraver":
-        result = detect_pathtraver(None, patched_code)
-    else:
-        # For other categories, do basic check
-        return True, f"Patch generated for {category}"
+    # Import needed detectors dynamically
+    from . import detectors
     
-    # Verify True → False transition
+    detector_map = {
+        "sqli": detectors.detect_sqli,
+        "pathtraver": detectors.detect_pathtraver,
+        "authz": detectors.detect_authz,
+        "deserial": detectors.detect_deserial,
+        "cmdi": detectors.detect_cmdi,
+        "ssrf": detectors.detect_ssrf,
+    }
+    
+    if category not in detector_map:
+        return True, f"Patch generated for {category} (detector unavailable for verification)"
+    
+    detector_func = detector_map[category]
+    
+    # Run detector on patched code
+    result = detector_func(None, patched_code)
+    
+    # Check if patch actually changed verdict from True to False
+    # Strict check: only True if verdict is explicitly False (not None)
     if result.verdict is False:
         return True, f"Patch verified: {category} True → False"
+    elif result.verdict is None:
+        return False, f"Patch inconclusive: {category} still undetermined"
     else:
         return False, f"Patch did not verify: {category} still {result.verdict}"
 

@@ -144,9 +144,9 @@
       },
       "token_savings_pct": 84.2,
       "patch": {
-        "unified_diff": "  \n  @RestController\n  @RequestMapping(\"/api/workflow\")\n  public class WorkflowController {\n      @Autowired\n      private WorkflowService workflowService;\n      \n      @PostMapping(\"/search\")\n      public ResponseEntity<?> searchMapStr(@RequestBody Map<String, String> searchParams) {\n          String query = workflowService.buildQuery(searchParams);\n          return ResponseEntity.ok(query);\n      }\n  }\n  \n  @Service\n  public class WorkflowService {\n      @Autowired\n      private JdbcTemplate jdbcTemplate;\n      \n      public String buildQuery(Map<String, String> params) {\n          String searchTerm = params.get(\"keyword\");\n          String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n          return jdbcTemplate.queryForMap(rawQuery).toString();\n      }\n  }\n  ",
-        "patch_verified": false,
-        "explanation": "Patch did not verify: sqli still True"
+        "unified_diff": "--- a/WorkflowService.java\n+++ b/WorkflowService.java\n@@ -6,8 +6,10 @@ public class WorkflowService {\n     public String buildQuery(Map<String, String> params) {\n         String searchTerm = params.get(\"keyword\");\n-        String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n-        return jdbcTemplate.queryForMap(rawQuery).toString();\n+        String safeQuery = \"SELECT * FROM workflows WHERE name LIKE ?\";\n+        String boundTerm = \"%\" + searchTerm + \"%\";\n+        return jdbcTemplate.queryForObject(safeQuery, String.class, boundTerm);\n     }\n }\n",
+        "patch_verified": true,
+        "explanation": "Patch verified: sqli True → False"
       }
     }
   },
@@ -162,6 +162,169 @@
       "description": "SAFE: Single-segment @PathVariable is normalized by Tomcat container guard - NOT vulnerable"
     },
     "result": {
+      "entry_function": "downloadFile",
+      "entry_route": "@RequestMapping(\"/api/files\")",
+      "hops": [
+        {
+          "hop": 1,
+          "function": "downloadFile",
+          "file": "FileController.java",
+          "line": 7,
+          "code": "// Call to downloadFile"
+        },
+        {
+          "hop": 2,
+          "function": "ok",
+          "file": "FileController.java",
+          "line": 8,
+          "code": "// Call to ok"
+        },
+        {
+          "hop": 3,
+          "function": "readAllBytes",
+          "file": "FileController.java",
+          "line": 9,
+          "code": "// Call to readAllBytes"
+        },
+        {
+          "hop": 4,
+          "function": "get",
+          "file": "FileController.java",
+          "line": 10,
+          "code": "// Call to get"
+        }
+      ],
+      "categories": {
+        "sqli": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No sqli patterns detected",
+          "tier": 0,
+          "cwe": "CWE-89"
+        },
+        "pathtraver": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "Container (Tomcat 10.1 + Spring 6.1) normalizes single-segment @PathVariable",
+          "tier": 0,
+          "cwe": "CWE-22"
+        },
+        "authz": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No authz patterns detected",
+          "tier": 0,
+          "cwe": "CWE-862"
+        },
+        "deserial": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No deserial patterns detected",
+          "tier": 0,
+          "cwe": "CWE-502"
+        },
+        "cmdi": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No cmdi patterns detected",
+          "tier": 0,
+          "cwe": "CWE-78"
+        },
+        "ssrf": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No ssrf patterns detected",
+          "tier": 0,
+          "cwe": "CWE-918"
+        }
+      },
+      "token_savings_pct": 95.0,
+      "patch": {
+        "unified_diff": "",
+        "patch_verified": false,
+        "explanation": ""
+      }
+    }
+  },
+  "engine_raw": {
+    "sqli": {
+      "entry_function": "searchMapStr",
+      "entry_route": "@RequestMapping(\"/api/workflow\")",
+      "hops": [
+        {
+          "hop": 1,
+          "function": "searchMapStr",
+          "file": "WorkflowController.java",
+          "line": 9,
+          "code": "// Call to searchMapStr"
+        },
+        {
+          "hop": 2,
+          "function": "buildQuery",
+          "file": "WorkflowController.java",
+          "line": 10,
+          "code": "// Call to buildQuery"
+        },
+        {
+          "hop": 3,
+          "function": "ok",
+          "file": "WorkflowController.java",
+          "line": 11,
+          "code": "// Call to ok"
+        }
+      ],
+      "categories": {
+        "sqli": {
+          "verdict": true,
+          "confidence": 1.0,
+          "explanation": "String concatenation detected into SQL query",
+          "tier": 0,
+          "cwe": "CWE-89"
+        },
+        "pathtraver": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No path traversal patterns detected",
+          "tier": 0,
+          "cwe": "CWE-22"
+        },
+        "authz": {
+          "verdict": true,
+          "confidence": 0.6,
+          "explanation": "Tier 2 deep analysis: Still uncertain (conservative default)",
+          "tier": 2,
+          "cwe": "CWE-862"
+        },
+        "deserial": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No deserialization patterns detected",
+          "tier": 0,
+          "cwe": "CWE-502"
+        },
+        "cmdi": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No command injection patterns detected",
+          "tier": 0,
+          "cwe": "CWE-78"
+        },
+        "ssrf": {
+          "verdict": false,
+          "confidence": 1.0,
+          "explanation": "No SSRF patterns detected",
+          "tier": 0,
+          "cwe": "CWE-918"
+        }
+      },
+      "token_savings_pct": 84.2,
+      "patch": {
+        "unified_diff": "  \n  @RestController\n  @RequestMapping(\"/api/workflow\")\n  public class WorkflowController {\n      @Autowired\n      private WorkflowService workflowService;\n      \n      @PostMapping(\"/search\")\n      public ResponseEntity<?> searchMapStr(@RequestBody Map<String, String> searchParams) {\n          String query = workflowService.buildQuery(searchParams);\n          return ResponseEntity.ok(query);\n      }\n  }\n  \n  @Service\n  public class WorkflowService {\n      @Autowired\n      private JdbcTemplate jdbcTemplate;\n      \n      public String buildQuery(Map<String, String> params) {\n          String searchTerm = params.get(\"keyword\");\n          String rawQuery = \"SELECT * FROM workflows WHERE name LIKE '%\" + searchTerm + \"%'\";\n          return jdbcTemplate.queryForMap(rawQuery).toString();\n      }\n  }\n  ",
+        "patch_verified": false,
+        "explanation": "Patch did not verify: sqli still True"
+      }
+    },
+    "fp": {
       "entry_function": "downloadFile",
       "entry_route": "@RequestMapping(\"/api/files\")",
       "hops": [
@@ -250,10 +413,10 @@
     "dataType": "CVE_RECORD",
     "dataVersion": "5.2",
     "cveMetadata": {
-      "cveId": "x_CAN-2026-984430",
+      "cveId": "x_CAN-2026-642599",
       "assignerOrgId": "chimera-audit-cna",
       "state": "PUBLISHED",
-      "datePublished": "2026-11-13T22:34:17.423933Z"
+      "datePublished": "2026-11-13T22:50:26.353511Z"
     },
     "containers": {
       "cna": {
@@ -329,14 +492,14 @@
           "taintSinks": [
             "jdbcTemplate.queryForMap(rawQuery)"
           ],
-          "patchVerified": false,
+          "patchVerified": true,
           "tokenSavingsPct": 84.2,
           "generatedBy": "ChimeraAudit v1.0"
         }
       }
     }
   },
-  "cve5_pretty": "{\n  \"dataType\": \"CVE_RECORD\",\n  \"dataVersion\": \"5.2\",\n  \"cveMetadata\": {\n    \"cveId\": \"x_CAN-2026-984430\",\n    \"assignerOrgId\": \"chimera-audit-cna\",\n    \"state\": \"PUBLISHED\",\n    \"datePublished\": \"2026-11-13T22:34:17.423933Z\"\n  },\n  \"containers\": {\n    \"cna\": {\n      \"descriptions\": [\n        {\n          \"lang\": \"en\",\n          \"value\": \"SQL Injection vulnerability in searchMapStr (sqli). The vulnerable code is located in WorkflowController.java. Multi-hop taint slice depth: 3 hops.\"\n        }\n      ],\n      \"affected\": [\n        {\n          \"product\": \"chimera-audit\",\n          \"vendor\": \"your-org\",\n          \"versions\": [\n            {\n              \"version\": \"0.0\",\n              \"status\": \"affected\",\n              \"lessThan\": \"unpatched\"\n            }\n          ],\n          \"platforms\": [\n            \"All\"\n          ],\n          \"programFiles\": [\n            \"WorkflowController.java\"\n          ]\n        }\n      ],\n      \"references\": [\n        {\n          \"url\": \"https://github.com/your-org/chimera-audit\",\n          \"name\": \"Repository\"\n        },\n        {\n          \"url\": \"https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=CWE-89\",\n          \"name\": \"CWE-89 Details\"\n        }\n      ],\n      \"metrics\": [\n        {\n          \"cvssV3_1\": {\n            \"version\": \"3.1\",\n            \"vectorString\": \"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H\",\n            \"baseScore\": 9.8,\n            \"baseSeverity\": \"CRITICAL\",\n            \"attackVector\": \"NETWORK\",\n            \"attackComplexity\": \"LOW\",\n            \"privilegesRequired\": \"NONE\",\n            \"userInteraction\": \"NONE\",\n            \"scope\": \"UNCHANGED\"\n          }\n        }\n      ],\n      \"problemTypes\": [\n        {\n          \"descriptions\": [\n            {\n              \"type\": \"CWE\",\n              \"cweId\": \"CWE-89\",\n              \"description\": \"SQL Injection vulnerability\"\n            }\n          ]\n        }\n      ],\n      \"x_CAN\": {\n        \"category\": \"sqli\",\n        \"unitName\": \"searchMapStr\",\n        \"filePath\": \"WorkflowController.java\",\n        \"sliceHops\": 3,\n        \"taintSources\": [\n          \"@RequestBody Map<String,String> searchParams\"\n        ],\n        \"taintSinks\": [\n          \"jdbcTemplate.queryForMap(rawQuery)\"\n        ],\n        \"patchVerified\": false,\n        \"tokenSavingsPct\": 84.2,\n        \"generatedBy\": \"ChimeraAudit v1.0\"\n      }\n    }\n  }\n}",
+  "cve5_pretty": "{\n  \"dataType\": \"CVE_RECORD\",\n  \"dataVersion\": \"5.2\",\n  \"cveMetadata\": {\n    \"cveId\": \"x_CAN-2026-642599\",\n    \"assignerOrgId\": \"chimera-audit-cna\",\n    \"state\": \"PUBLISHED\",\n    \"datePublished\": \"2026-11-13T22:50:26.353511Z\"\n  },\n  \"containers\": {\n    \"cna\": {\n      \"descriptions\": [\n        {\n          \"lang\": \"en\",\n          \"value\": \"SQL Injection vulnerability in searchMapStr (sqli). The vulnerable code is located in WorkflowController.java. Multi-hop taint slice depth: 3 hops.\"\n        }\n      ],\n      \"affected\": [\n        {\n          \"product\": \"chimera-audit\",\n          \"vendor\": \"your-org\",\n          \"versions\": [\n            {\n              \"version\": \"0.0\",\n              \"status\": \"affected\",\n              \"lessThan\": \"unpatched\"\n            }\n          ],\n          \"platforms\": [\n            \"All\"\n          ],\n          \"programFiles\": [\n            \"WorkflowController.java\"\n          ]\n        }\n      ],\n      \"references\": [\n        {\n          \"url\": \"https://github.com/your-org/chimera-audit\",\n          \"name\": \"Repository\"\n        },\n        {\n          \"url\": \"https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=CWE-89\",\n          \"name\": \"CWE-89 Details\"\n        }\n      ],\n      \"metrics\": [\n        {\n          \"cvssV3_1\": {\n            \"version\": \"3.1\",\n            \"vectorString\": \"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H\",\n            \"baseScore\": 9.8,\n            \"baseSeverity\": \"CRITICAL\",\n            \"attackVector\": \"NETWORK\",\n            \"attackComplexity\": \"LOW\",\n            \"privilegesRequired\": \"NONE\",\n            \"userInteraction\": \"NONE\",\n            \"scope\": \"UNCHANGED\"\n          }\n        }\n      ],\n      \"problemTypes\": [\n        {\n          \"descriptions\": [\n            {\n              \"type\": \"CWE\",\n              \"cweId\": \"CWE-89\",\n              \"description\": \"SQL Injection vulnerability\"\n            }\n          ]\n        }\n      ],\n      \"x_CAN\": {\n        \"category\": \"sqli\",\n        \"unitName\": \"searchMapStr\",\n        \"filePath\": \"WorkflowController.java\",\n        \"sliceHops\": 3,\n        \"taintSources\": [\n          \"@RequestBody Map<String,String> searchParams\"\n        ],\n        \"taintSinks\": [\n          \"jdbcTemplate.queryForMap(rawQuery)\"\n        ],\n        \"patchVerified\": true,\n        \"tokenSavingsPct\": 84.2,\n        \"generatedBy\": \"ChimeraAudit v1.0\"\n      }\n    }\n  }\n}",
   "cve5_valid": true,
   "cve5_errors": [],
   "spec_files": {

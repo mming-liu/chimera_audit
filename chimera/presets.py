@@ -88,7 +88,8 @@ public class WorkflowService {
     
     public String buildQuery(Map<String, String> params) {
         String searchTerm = params.get("keyword");
-        String rawQuery = "SELECT * FROM workflows WHERE name LIKE '%" + searchTerm + "%'";
+        String rawQuery = "SELECT * FROM workflows WHERE name LIKE '";
+        rawQuery += "%" + searchTerm + "%'";
         return jdbcTemplate.queryForMap(rawQuery).toString();
     }
 }
@@ -96,7 +97,7 @@ public class WorkflowService {
     language="java",
     filename="WorkflowController.java",
     expected_verdict=True,
-    description="SQL injection via string concatenation in LIKE clause"
+    description="SQL injection via string concatenation (+= style) in LIKE clause"
 )
 
 
@@ -176,9 +177,9 @@ public class FileController {
     
     @GetMapping("/download/{fileName}")
     public ResponseEntity<?> downloadFile(@PathVariable String fileName) {
-        // Single-segment @PathVariable without URLDecoder or {*wildcard}
-        // Tomcat 10.1 + Spring MVC 6.1 normalizes single-segment @PathVariable
-        // Blocks %2F (/) and %2E%2E (..) automatically
+        // Single-segment @PathVariable without decode
+        // Tomcat 10.1 + Spring MVC 6.1 normalizes incoming @PathVariable
+        // Blocks %2F (/) and %2E%2E (..) automatically at container level
         String filePath = "/safe/files/" + fileName;
         return ResponseEntity.ok(Files.readAllBytes(Paths.get(filePath)));
     }

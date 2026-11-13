@@ -112,10 +112,30 @@ def detect_pathtraver(slice_result: SliceResult, code: str = "") -> DetectorResu
     """
     evidence = []
     
+    # Pattern 0: Check for single-segment @PathVariable guard FIRST (Tomcat + Spring 6.1)
+    # This MUST be checked before generic unsafe file operations
+    if "@PathVariable" in code and "URLDecoder" not in code and "{*" not in code:
+        # If code has @PathVariable but NO URLDecoder and NO multi-segment pattern,
+        # AND has file operations, then container guard applies
+        if any(re.search(p, code) for p in [r"Files\.readAllBytes", r"Files\.write", r"FileWriter", r"Paths\.get"]):
+            # This is a @PathVariable → file operation chain
+            # Tomcat 10.1 + Spring MVC 6.1 normalizes single-segment @PathVariable automatically
+            return DetectorResult(
+                category="pathtraver",
+                verdict=False,
+                evidence=["@PathVariable without URLDecoder or multi-segment",
+                          "File operation uses @PathVariable parameter",
+                          "Tomcat 10.1 + Spring 6.1 normalizes single-segment @PathVariable"],
+                cwe_id="CWE-22",
+                cvss_base=0.0,
+                explanation="Container (Tomcat 10.1 + Spring 6.1) normalizes single-segment @PathVariable, blocking %2F and %2E%2E"
+            )
+    
     # Pattern 1: Unsafe file operations
     unsafe_patterns = [
         r"FileWriter\s*\(\s*\w+",          # FileWriter(userPath)
-        r"Files\.write\s*\(\s*\w+",        # Files.write(userPath)
+        r"Files\.write\s*\(\s*(?:Paths\.get)?\s*\(",  # Files.write(Paths.get(...))
+        r"Files\.readAllBytes\s*\(",       # Files.readAllBytes(userPath)
         r"open\s*\(\s*\w+",                # open(userPath)
         r"new\s+File\s*\(\s*\w+",         # new File(userPath)
         r"fopen\s*\(\s*\w+",               # fopen(userPath)
@@ -125,17 +145,15 @@ def detect_pathtraver(slice_result: SliceResult, code: str = "") -> DetectorResu
         if re.search(pattern, code):
             evidence.append(f"Found unsafe file operation: {pattern}")
             
-            # Check if this is single-segment @PathVariable (Java/Spring guarded by Tomcat)
-            if "@PathVariable" in code and "URLDecoder" not in code and "{*" not in code:
-                # Tomcat + Spring 6.1 container guard
-                return DetectorResult(
-                    category="pathtraver",
-                    verdict=False,
-                    evidence=evidence + ["Single-segment @PathVariable guarded by Tomcat"],
-                    cwe_id="CWE-22",
-                    cvss_base=0.0,
-                    explanation="Container (Tomcat 10.1 + Spring 6.1) normalizes single-segment @PathVariable"
-                )
+            return DetectorResult(
+                category="pathtraver",
+                verdict=True,
+                evidence=evidence,
+                cwe_id="CWE-22",
+                cvss_base=8.1,
+                cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+                explanation="Unsafe file operation with user input detected"
+            )
             
             return DetectorResult(
                 category="pathtraver",
